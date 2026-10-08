@@ -1,0 +1,38 @@
+{
+  "name": "@goose/sdk",
+  "version": "0.1.0",
+  "description": "JavaScript/TypeScript SDK for the Goose config service (browser flag reads; server-side configs + webhooks)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && node --test test/*.test.mjs"
+  },
+  "keywords": [
+    "goose",
+    "feature-flags",
+    "sdk",
+    "browser",
+    "node",
+    "configs",
+    "webhooks"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.5.0"
+  }
+}

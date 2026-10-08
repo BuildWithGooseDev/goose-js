@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Goose Browser SDK — live flag deltas</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      body {
+        margin: 0;
+        padding: 2rem;
+        background: #0b0f14;
+        color: #d6e2f0;
+      }
+      h1 {
+        font-size: 1.1rem;
+        margin: 0 0 1rem;
+      }
+      form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #7d8da0;
+        gap: 0.25rem;
+      }
+      input {
+        background: #131a23;
+        border: 1px solid #243140;
+        color: inherit;
+        padding: 0.4rem 0.5rem;
+        border-radius: 6px;
+        font: inherit;
+      }
+      button {
+        align-self: end;
+        background: #2563eb;
+        color: white;
+        border: 0;
+        border-radius: 6px;
+        padding: 0.5rem 0.9rem;
+        font: inherit;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      #status {
+        font-size: 0.8rem;
+        color: #7d8da0;
+        margin-bottom: 0.75rem;
+      }
+      #log {
+        background: #0f151d;
+        border: 1px solid #1c2733;
+        border-radius: 8px;
+        padding: 0.75rem;
+        height: 50vh;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        font-size: 0.85rem;
+        line-height: 1.5;
+      }
+      .delta .key {
+        color: #6ee7b7;
+      }
+      .delta .arrow {
+        color: #7d8da0;
+      }
+      .meta {
+        color: #7d8da0;
+      }
+      .error {
+        color: #fca5a5;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🪿 Goose Browser SDK — live flag deltas</h1>
+
+    <form id="connect-form">
+      <label>
+        Server URL
+        <input id="serverUrl" value="http://localhost:8080" />
+      </label>
+      <label>
+        Client ID (gsc_…)
+        <input id="clientId" placeholder="gsc_..." />
+      </label>
+      <label>
+        Flagset
+        <input id="flagset" value="checkout" />
+      </label>
+      <label>
+        Namespace (optional)
+        <input id="namespace" placeholder="production" />
+      </label>
+      <button type="submit" id="connect-btn">Connect</button>
+    </form>
+
+    <div id="status">Not connected.</div>
+    <div id="log" aria-live="polite"></div>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
