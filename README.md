@@ -34,12 +34,50 @@ Bun — where, given a client secret, it also supports **app configs** and
 > request a secret-bearing feature without a `clientSecret`, but it cannot tell
 > whether your code is running in a browser — that's on you.
 
-## Install & build
+## Install
 
 ```bash
-cd sdks/js
+npm install github:BuildWithGooseDev/goose-js
+```
+
+npm runs the package's `prepare` script on a git install, so the TypeScript is
+compiled for you — there is no separate build step.
+
+Pin a release for anything you deploy; any git ref works after the `#`:
+
+```bash
+npm install github:BuildWithGooseDev/goose-js#v0.1.0
+```
+
+In `package.json`:
+
+```json
+{
+  "dependencies": {
+    "@goose/sdk": "github:BuildWithGooseDev/goose-js#v0.1.0"
+  }
+}
+```
+
+yarn and pnpm take the same spec:
+
+```bash
+yarn add github:BuildWithGooseDev/goose-js
+pnpm add github:BuildWithGooseDev/goose-js
+```
+
+ESM only, with bundled type definitions:
+
+```ts
+import { GooseSDK } from "@goose/sdk";
+```
+
+### Working on the SDK itself
+
+```bash
 npm install
-npm run build   # emits dist/ (ESM + .d.ts)
+npm run build
+npm test
 ```
 
 ## Test
