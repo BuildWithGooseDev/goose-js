@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { GooseSDK, GooseSDKError, createClient } from "../dist/index.js";
+import { SERVER_URL, GooseSDK, GooseSDKError, createClient } from "../dist/index.js";
 
 const base = {
   clientId: "gsc_x",
@@ -15,9 +15,15 @@ function expectThrow(options, label) {
   assert.throws(() => new GooseSDK(options), GooseSDKError, label);
 }
 
-test("requires clientId and serverUrl", () => {
+test("requires clientId", () => {
   expectThrow({ ...base, clientId: "  " }, "missing clientId");
-  expectThrow({ ...base, serverUrl: "" }, "missing serverUrl");
+});
+
+test("serverUrl defaults to the Goose service", () => {
+  const defaulted = new GooseSDK({ ...base, serverUrl: undefined });
+  assert.equal(defaulted.serverUrl, SERVER_URL);
+  const explicit = new GooseSDK({ ...base, serverUrl: "http://localhost:8080/" });
+  assert.equal(explicit.serverUrl, "http://localhost:8080");
 });
 
 test("requires at least one flagset", () => {

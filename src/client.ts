@@ -8,6 +8,7 @@ import {
 import {
   assignVariant,
   EXPERIMENT_STATUS_PAUSED,
+  experimentEnded,
   variantPayload,
   type ExperimentDefinition,
   type Variant,
@@ -88,6 +89,8 @@ export interface ConfigChangeEvent {
 
 export type ConfigChangeListener = (event: ConfigChangeEvent) => void;
 
+export const SERVER_URL = "https://sdk.buildwithgoose.net";
+
 export interface GooseClientOptions {
   /**
    * The SDK client id (gsc_…). A public, non-secret identifier; the only
@@ -101,8 +104,10 @@ export interface GooseClientOptions {
    * secret, so configs/webhooks must run in a server runtime (Node/Deno/Bun).
    */
   clientSecret?: string;
-  /** Base URL of the Goose config service, e.g. "https://goose.example.com". */
-  serverUrl: string;
+  /**
+   * Overrides the Goose service base URL ({@link SERVER_URL}).
+   */
+  serverUrl?: string;
   /**
    * Stable caller thumbprint sent on every request for analytics. When unset,
    * the SDK derives a best-effort runtime-specific value.
@@ -463,6 +468,13 @@ export class GooseSDK {
   private experiments: Map<string, ExperimentDefinition> = new Map();
   private experimentsLoaded = false;
   private readonly exposureSeen = new BoundedKeySet(EXPOSURE_DEDUP_ENTRIES);
+  /**
+   * Experiments the ingest endpoint reported as closed ("this experiment is
+   * over"). No further events are recorded for them; the server's next poll
+   * normally removes the definition too. A key is forgotten again if a poll
+   * re-serves it — the dashboard may have extended the end date.
+   */
+  private readonly closedExperiments = new Set<string>();
   private readonly experimentEvents: ExperimentEventQueue;
   /** Options.appVersion as supplied, for log messages. */
   private readonly appVersionRaw: string;
@@ -500,10 +512,10 @@ export class GooseSDK {
 
   constructor(options: GooseClientOptions) {
     const clientId = (options.clientId ?? "").trim();
-    const serverUrl = (options.serverUrl ?? "").trim();
-    if (!clientId || !serverUrl) {
-      throw new GooseSDKError("clientId and serverUrl are required");
+    if (!clientId) {
+      throw new GooseSDKError("clientId is required");
     }
+    const serverUrl = (options.serverUrl ?? "").trim() || SERVER_URL;
 
     this.clientId = clientId;
     // The client secret is only sent on secret-bearing endpoints (app configs +
@@ -1149,6 +1161,13 @@ export class GooseSDK {
       return { key: null, payload: undefined, inExperiment: false, reason: "unknown_experiment" };
     }
 
+    // Past the end date (or told by the server that the experiment is over)
+    // there is no assignment and no exposure: the experiment is closed, and
+    // the server would reject the events anyway.
+    if (experimentEnded(definition) || this.closedExperiments.has(experimentKey)) {
+      return { key: null, payload: undefined, inExperiment: false, reason: "ended" };
+    }
+
     // A stopped experiment that pinned a winner serves it to everyone, so a
     // concluded test keeps behaving consistently until the code is removed.
     if (definition.winner_variant_key) {
@@ -1224,6 +1243,9 @@ export class GooseSDK {
       if (definition.status === EXPERIMENT_STATUS_PAUSED) {
         continue;
       }
+      if (experimentEnded(definition) || this.closedExperiments.has(key)) {
+        continue;
+      }
       if (!definition.metric_keys?.includes(metricKey)) {
         continue;
       }
@@ -1259,12 +1281,37 @@ export class GooseSDK {
     );
   }
 
+  /**
+   * React to an ingest response naming closed experiments: warn once per
+   * experiment and stop recording events for it. The next poll usually removes
+   * the definition as well; until then getVariant reports "ended".
+   */
+  private handleClosedExperiments(response: unknown): void {
+    if (!response || typeof response !== "object") {
+      return;
+    }
+    const closed = (response as Record<string, unknown>).closed_experiments;
+    if (!Array.isArray(closed)) {
+      return;
+    }
+    for (const key of closed) {
+      if (typeof key !== "string" || key === "" || this.closedExperiments.has(key)) {
+        continue;
+      }
+      this.closedExperiments.add(key);
+      console.warn(
+        `goose-sdk: experiment '${key}' is over; its events were rejected and no further events will be recorded`,
+      );
+    }
+  }
+
   private buildEventSink(): EventSink {
     return {
       send: async (events: ExperimentEvent[]) => {
-        await this.request("POST", "/api/v1/experiments/events", {
+        const response = await this.request("POST", "/api/v1/experiments/events", {
           body: this.experimentEventBody(events),
         });
+        this.handleClosedExperiments(response);
       },
       sendBeacon: (events: ExperimentEvent[]) => {
         // A closing tab gets no async work; sendBeacon is the only thing that
@@ -1348,6 +1395,11 @@ export class GooseSDK {
       }
     }
     this.experiments = next;
+    // A re-served experiment is open again (its end date may have been
+    // extended), so stop treating it as closed.
+    for (const key of next.keys()) {
+      this.closedExperiments.delete(key);
+    }
     this.experimentsLoaded = true;
     this.markDirty();
   }

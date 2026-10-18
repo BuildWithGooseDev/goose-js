@@ -53,7 +53,8 @@ form.addEventListener("submit", async (event) => {
 
   client = new GooseSDK({
     clientId,
-    serverUrl,
+    serverUrl: serverUrl || undefined, // blank = Goose service
+
     flagsets: flagset,
     connectionType: ["polling", "sse"],
     namespaceName: namespace || undefined,
@@ -66,7 +67,7 @@ form.addEventListener("submit", async (event) => {
   try {
     await client.connect();
     const snapshot = client.snapshot();
-    statusEl.textContent = `Connected to ${serverUrl} — flagset "${flagset}". Watching for deltas…`;
+    statusEl.textContent = `Connected to ${client.serverUrl} — flagset "${flagset}". Watching for deltas…`;
     log(`Initial snapshot: ${JSON.stringify(snapshot[flagset] ?? {})}`);
   } catch (error) {
     statusEl.textContent = "Connection failed.";

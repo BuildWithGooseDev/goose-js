@@ -1,4 +1,5 @@
 export {
+  SERVER_URL,
   GooseSDK,
   GooseSDKError,
   GooseSDKHTTPError,

@@ -1,19 +1,35 @@
 // Server-side (Node) example: read flags, watch app configs, and receive webhook
 // deltas — the secret-bearing features that must NOT run in a browser. Build the
-// SDK first (`cd sdks/js && npm install && npm run build`), then run with:
+// SDK first (`cd sdks/js && npm install && npm run build`), then either copy
+// `.env.example` to `.env` beside this file and fill it in, or run with:
 //
-//   GOOSE_SERVER_URL=http://localhost:8080 \
 //   GOOSE_CLIENT_ID=gsc_... GOOSE_CLIENT_SECRET=... \
 //   GOOSE_FLAGSET=checkout GOOSE_NAMESPACE=production \
 //   node sdks/js/example/node.mjs
 //
 // Optional: GOOSE_CONFIGS=frontend,database to watch configs, and
 // GOOSE_WEBHOOK_TARGET_URL=http://host:8091/webhook to enable webhook mode.
+import { readFileSync } from "node:fs";
+
 import { GooseSDK } from "../dist/index.js";
+
+// Auto-load an .env file beside this script (like the other SDK examples),
+// without overriding variables already set in the environment.
+try {
+  const dotenv = readFileSync(new URL(".env", import.meta.url), "utf8");
+  for (const rawLine of dotenv.split("\n")) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#") || !line.includes("=")) continue;
+    const [key, ...rest] = line.split("=");
+    process.env[key.trim()] ??= rest.join("=").trim();
+  }
+} catch {
+  // No .env file — environment variables alone are fine.
+}
 
 const env = (key, fallback = "") => (process.env[key] ?? "").trim() || fallback;
 
-const serverUrl = env("GOOSE_SERVER_URL", "http://localhost:8080");
+const serverUrl = env("GOOSE_SERVER_URL") || undefined;
 const clientId = env("GOOSE_CLIENT_ID");
 const clientSecret = env("GOOSE_CLIENT_SECRET");
 const flagset = env("GOOSE_FLAGSET", "checkout");

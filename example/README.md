@@ -23,7 +23,9 @@ delta to the screen, live, over polling + SSE.
 3. Open <http://localhost:5500/example/> in a browser.
 
 4. Fill in:
-   - **Server URL** — your config service (default `http://localhost:8080`).
+   - **Server URL** — leave blank; the Goose service
+     (`https://sdk.buildwithgoose.net`) is used automatically. (Developers can
+     point it elsewhere, e.g. `http://localhost:8080`.)
    - **Client ID** — a `gsc_…` id created under **SDK Access** in the dashboard.
    - **Flagset** / **Namespace** — what to watch.
 
@@ -46,10 +48,19 @@ delta to the screen, live, over polling + SSE.
 configs, and (optionally) receives webhook deltas — the secret-bearing features
 that must not ship to a browser.
 
-After building the SDK (`npm run build`), run it with your credentials:
+After building the SDK (`npm run build`), copy the template and fill in your
+credentials — `node.mjs` auto-loads an `.env` beside it (without overriding
+variables already set in your environment):
 
 ```bash
-GOOSE_SERVER_URL=http://localhost:8080 \
+cp sdks/js/example/.env.example sdks/js/example/.env
+$EDITOR sdks/js/example/.env
+node sdks/js/example/node.mjs
+```
+
+Or pass everything inline:
+
+```bash
 GOOSE_CLIENT_ID=gsc_... \
 GOOSE_CLIENT_SECRET=... \
 GOOSE_FLAGSET=checkout \
@@ -61,6 +72,8 @@ node sdks/js/example/node.mjs
 
 - `GOOSE_CLIENT_SECRET` is required only when `GOOSE_CONFIGS` or
   `GOOSE_WEBHOOK_TARGET_URL` is set.
+- `GOOSE_SERVER_URL` is optional: the Goose service is used automatically; the
+  variable overrides it for development.
 - `GOOSE_APP_VERSION` is optional and switches on config **app-version gating**:
   an entry whose `min_app_version`/`max_app_version` range excludes that version
   resolves to its `default` instead of its `value`, and a change to it never

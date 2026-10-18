@@ -20,7 +20,8 @@ export type VariantReason =
   | "not_eligible"
   | "no_targeting_key"
   | "unknown_experiment"
-  | "not_loaded";
+  | "not_loaded"
+  | "ended";
 
 /** One arm, as delivered by config_service. */
 export interface ExperimentVariant {
@@ -45,6 +46,10 @@ export interface ExperimentDefinition {
   variants: ExperimentVariant[];
   metric_keys: string[];
   updated_at?: string;
+  // RFC3339 hard end. Past it the experiment is over: no assignment, no
+  // events. The server stops serving it on the next poll; this field lets the
+  // SDK stop at the right moment in between.
+  ends_at?: string | null;
 }
 
 /**
@@ -61,6 +66,22 @@ export interface Variant {
 
 /** An experiment that is parked: it still serves arms but collects nothing. */
 export const EXPERIMENT_STATUS_PAUSED = "paused";
+
+/**
+ * Whether the experiment is past its end date. An unparseable ends_at is
+ * treated as "no end" rather than "ended": a malformed timestamp must not
+ * silently kill a live experiment.
+ */
+export function experimentEnded(
+  definition: Pick<ExperimentDefinition, "ends_at">,
+  now: number = Date.now(),
+): boolean {
+  if (!definition.ends_at) {
+    return false;
+  }
+  const endsAt = Date.parse(definition.ends_at);
+  return Number.isFinite(endsAt) && endsAt <= now;
+}
 
 /**
  * Map a subject to a slot in [0, EXPERIMENT_BUCKET_SLOTS) by hashing

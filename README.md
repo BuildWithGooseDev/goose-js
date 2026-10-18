@@ -2,7 +2,8 @@
 
 A JavaScript/TypeScript SDK for the Goose config service. It reads feature flags
 by **polling** and/or a live **SSE** stream, evaluates **canary rollouts**
-client-side, and emits change events.
+client-side, runs **A/B experiments** (deterministic variant assignment + event
+reporting), and emits change events.
 
 It has **no runtime dependencies** and ships as ESM with TypeScript types. It
 runs in **browsers** (flags only) and in **server runtimes** — Node 18+, Deno,
@@ -97,8 +98,7 @@ npm test
 import { GooseSDK } from "@goose/sdk"; // or "../dist/index.js" when running from source
 
 const client = new GooseSDK({
-  clientId: "gsc_your_client_id", // public, non-secret
-  serverUrl: "https://goose.example.com",
+  clientId: "gsc_your_client_id", // public, non-secret — the only required credential
   flagsets: "checkout",
   connectionType: ["polling", "sse"], // "polling" (default), "sse", or both
   namespaceName: "production",
@@ -128,20 +128,28 @@ unsubscribe();
 client.close();
 ```
 
+The SDK connects to the Goose service (`sdk.buildwithgoose.net`) out of the
+box — no URL to configure.
+
 ### Options
 
 | Option | Type | Default | Notes |
 |---|---|---|---|
 | `clientId` | `string` | — | Required. Public `gsc_…` identifier. |
-| `serverUrl` | `string` | — | Required. Base URL of the config service. |
 | `flagsets` | `string \| string[]` | — | Required. One or more flagset names. |
 | `connectionType` | `"polling" \| "sse" \| (…)[]` | `"polling"` | Combine both for snapshot + live stream. |
 | `namespaceName` | `string` | — | Default namespace for all flagsets. |
 | `flagsetNamespaces` | `Record<string,string>` | — | Per-flagset namespace overrides. |
-| `defaultTargetingKey` | `string` | — | Fallback bucketing key for canary rollouts. |
+| `defaultTargetingKey` | `string` | — | Fallback bucketing key for canary rollouts and experiments. |
+| `enableExperiments` | `boolean` | `false` | Fetch running experiments in `namespaceName`; see [Experiments](#experiments-ab-testing). |
 | `storageAdapter` | `StorageAdapter` | — | Mirror values into an external store. |
+| `cache` | `PersistentCache` | — | Warm-start store (`FileCache` is built in; Node only). |
+| `requireInitialConnect` | `boolean` | `false` | Fail fast if the first fetch fails instead of starting degraded. |
+| `onError` | `(err) => void` | — | Observe background errors (never affect reads). |
+| `thumbprint` | `string` | derived | Stable caller identifier sent for analytics. |
 | `pollIntervalSeconds` | `number` | `5` | Polling cadence (floored at 1). |
 | `requestTimeoutSeconds` | `number` | `10` | Per-request timeout for non-stream calls. |
+| `sseReadTimeoutSeconds` | `number` | `65` | Idle watchdog for the SSE stream (floored at 5). |
 | `autoConnect` | `boolean` | `true` | Set `false` to `await connect()` yourself. |
 
 Server-side only (require `clientSecret`; **never use in a browser**):
@@ -169,6 +177,13 @@ Server-side only (require `clientSecret`; **never use in a browser**):
 - `state()` / `lastSync()` / `isStale()` — connection health (see below).
 - `onStateChange(listener)` / `onError(listener)` → unsubscribe functions.
 
+Experiments (with `enableExperiments: true`):
+
+- `getVariant(experimentKey, targetingKey?)` → `Promise<Variant>` (`{ key, payload, inExperiment, reason }`).
+- `trackConversion(metricKey, { targetingKey?, experimentKey? })` — record a conversion.
+- `trackMetric(metricKey, value, { targetingKey?, experimentKey? })` — record a numeric metric.
+- `flushEvents()` → `Promise<void>` — force-send buffered experiment events.
+
 Server-side (configs + webhooks):
 
 - `getConfig(name, fallback?)` → the watched config's whole document.
@@ -178,6 +193,55 @@ Server-side (configs + webhooks):
 - `onRestartRequired(listener)` → unsubscribe; drain hook for requires_restart changes.
 - `registerWebhooks()` / `processWebhookEvent(payload, receivedSecret?)`.
 - `webhookListenerUrl` / `webhookEventsReceived` — listener metadata.
+
+## Experiments (A/B testing)
+
+Experiments work **in the browser**: unlike configs, they authenticate with the
+publishable `clientId` alone. Opt in with `enableExperiments: true` (requires
+`namespaceName`); the client fetches every running experiment in that namespace
+and assigns variants locally — deterministic, sticky, no per-user server call.
+
+```js
+const client = new GooseSDK({
+  clientId: "gsc_…",
+  flagsets: "checkout",
+  namespaceName: "production",
+  enableExperiments: true,
+  defaultTargetingKey: currentUser.id, // stable per-subject key
+});
+
+// Assignment (async: bucketing hashes via Web Crypto). Recording the exposure
+// happens automatically, once per subject.
+const variant = await client.getVariant("checkout_cta");
+if (variant.inExperiment) {
+  renderCta(variant.key, variant.payload); // e.g. "treatment", { label: "Buy now" }
+}
+
+// Outcomes. A conversion counts once per subject (a rate can't exceed 100%);
+// numeric values accumulate per subject.
+client.trackConversion("purchase");
+client.trackMetric("order_value", 42.5);
+
+await client.flushEvents(); // also runs on a timer, on page hide, and on close()
+```
+
+Things to know:
+
+- `variant.reason` says why there was no assignment: `"not_eligible"`,
+  `"no_targeting_key"`, `"unknown_experiment"`, `"not_loaded"`, or `"ended"`.
+- A **stopped experiment with a pinned winner** serves that winner to everyone.
+- A **paused** experiment still serves arms but records no events.
+- Past an experiment's **end date** there is no assignment and no events; the
+  server also rejects events for closed experiments, and the SDK stops sending
+  them (extending the end date in the dashboard reopens it).
+- Without `experimentKey`, `trackConversion`/`trackMetric` report against every
+  running experiment declaring that metric — usually what you want when one
+  purchase is an outcome for several concurrent tests.
+- ⚠️ Variant **payloads are world-readable** to anyone holding your client id —
+  never put a secret in one.
+- Events are buffered, batched, deduplicated, and flushed with `sendBeacon` on
+  page hide so exposures aren't lost on navigation. `droppedExperimentEvents()`
+  tells you if any were discarded under pressure.
 
 ## Resilience & self-healing
 
@@ -234,7 +298,6 @@ import { GooseSDK } from "@goose/sdk";
 const client = new GooseSDK({
   clientId: "gsc_…",
   clientSecret: process.env.GOOSE_CLIENT_SECRET, // server-side secret
-  serverUrl: "https://goose.example.com",
   flagsets: "checkout",
   namespaceName: "production",        // required when watching configs
   configs: ["frontend", "database"],  // config NAMES to watch
@@ -285,7 +348,6 @@ and existing clients behave exactly as they did before.
 const client = new GooseSDK({
   clientId: "gsc_…",
   clientSecret: process.env.GOOSE_CLIENT_SECRET,
-  serverUrl: "https://goose.example.com",
   flagsets: "checkout",
   namespaceName: "production",
   configs: ["frontend"],
@@ -317,7 +379,6 @@ change — listeners fire with the newly resolved value.
 const client = new GooseSDK({
   clientId: "gsc_…",
   clientSecret: process.env.GOOSE_CLIENT_SECRET,
-  serverUrl: "https://goose.example.com",
   flagsets: "checkout",
   connectionType: "webhook",
   webhookTargetUrl: "https://app.example.com/webhook", // public URL of this app

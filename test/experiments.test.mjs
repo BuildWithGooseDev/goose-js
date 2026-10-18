@@ -259,3 +259,73 @@ test("a dropped exposure is reported again", async () => {
   );
   assert.equal(requeued.length, 1, "the subject should be re-reported after a drop");
 });
+
+// --- End dates and closed experiments ---
+
+function endedDefinition(endsAt) {
+  return {
+    checkout: {
+      experiment_key: "checkout",
+      status: "running",
+      salt: "s1",
+      traffic_allocation: EXPERIMENT_BUCKET_SLOTS,
+      ends_at: endsAt,
+      variants: [
+        { variant_key: "control", weight_bp: 10000, payload: {}, is_control: true, sort_order: 0 },
+        { variant_key: "treatment", weight_bp: 0, payload: {}, is_control: false, sort_order: 1 },
+      ],
+      metric_keys: ["purchase"],
+    },
+  };
+}
+
+test("an experiment past its end date assigns nothing and collects nothing", async () => {
+  const client = seeded(
+    { defaultTargetingKey: "user-123" },
+    endedDefinition(new Date(Date.now() - 60_000).toISOString()),
+  );
+
+  const got = await client.getVariant("checkout");
+  assert.equal(got.inExperiment, false);
+  assert.equal(got.reason, "ended");
+  assert.equal(client.experimentEvents.pending.length, 0, "no exposure for an ended experiment");
+
+  client.trackConversion("purchase");
+  assert.equal(client.experimentEvents.pending.length, 0, "no conversions either");
+});
+
+test("a future end date changes nothing", async () => {
+  const client = seeded(
+    { defaultTargetingKey: "user-123" },
+    endedDefinition(new Date(Date.now() + 3_600_000).toISOString()),
+  );
+  const got = await client.getVariant("checkout");
+  assert.equal(got.inExperiment, true);
+  assert.equal(client.experimentEvents.pending.length, 1, "exposure still recorded");
+});
+
+test("a malformed end date must not kill a live experiment", async () => {
+  const client = seeded({ defaultTargetingKey: "user-123" }, endedDefinition("not-a-date"));
+  const got = await client.getVariant("checkout");
+  assert.equal(got.inExperiment, true);
+});
+
+// The ingest response names experiments that are over; the client stops
+// recording for them until a poll re-serves the key (end date extended).
+test("a closed_experiments response stops reporting for that experiment", async () => {
+  const client = seeded({ defaultTargetingKey: "user-123" });
+
+  client.handleClosedExperiments({ accepted: 0, rejected: 1, closed_experiments: ["checkout"] });
+
+  const got = await client.getVariant("checkout");
+  assert.equal(got.reason, "ended", "a server-closed experiment reads as ended");
+  client.trackConversion("purchase");
+  assert.equal(client.experimentEvents.pending.length, 0, "no further events are recorded");
+
+  // A fresh poll that re-serves the key reopens it — the end date was extended.
+  client.applyExperiments({
+    experiments: endedDefinition(new Date(Date.now() + 3_600_000).toISOString()),
+  });
+  const reopened = await client.getVariant("checkout");
+  assert.equal(reopened.inExperiment, true, "a re-served experiment is open again");
+});

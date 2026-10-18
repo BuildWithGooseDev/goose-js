@@ -1,7 +1,19 @@
 {
   "name": "@goose/sdk",
-  "version": "0.1.0",
-  "description": "JavaScript/TypeScript SDK for the Goose config service (browser flag reads; server-side configs + webhooks)",
+  "version": "0.2.0",
+  "description": "JavaScript/TypeScript SDK for the Goose config service (browser flag reads + experiments; server-side configs + webhooks)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/BuildWithGooseDev/goose-js.git"
+  },
+  "homepage": "https://github.com/BuildWithGooseDev/goose-js#readme",
+  "bugs": {
+    "url": "https://github.com/BuildWithGooseDev/goose-js/issues"
+  },
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -26,6 +38,8 @@
   "keywords": [
     "goose",
     "feature-flags",
+    "experiments",
+    "ab-testing",
     "sdk",
     "browser",
     "node",
